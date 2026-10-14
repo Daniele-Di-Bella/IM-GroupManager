@@ -783,11 +783,30 @@
         { id: 't4', name: 'Wet Lab Generale', icon: '🧪', refs: ['u4', 'u5'] }
       ];
 
+      // --- PERSISTENZA IDENTITÀ LOCALE (NUOVA SEZIONE) ---
+      const IDENTITY_STORAGE_KEY = 'labhub_portal_identity_v1';
+
+      let initialUser = users[0];
+      let initialLock = false;
+
+      // Legge lo stato salvato nel browser prima dell'avvio
+      const savedIdentity = localStorage.getItem(IDENTITY_STORAGE_KEY);
+      if (savedIdentity) {
+        try {
+          const parsed = JSON.parse(savedIdentity);
+          const foundUser = users.find(u => u.id === parsed.userId);
+          if (foundUser) initialUser = foundUser;
+          if (typeof parsed.isLocked === 'boolean') initialLock = parsed.isLocked;
+        } catch (e) {
+          console.error("Errore nel ripristino dell'identità salvata", e);
+        }
+      }
+
       // --- 2. REACTIVE STATE ---
-      const currentUser = ref(users[0]);
+      const currentUser = ref(initialUser); // Inizializzato con l'utente salvato
       const activeTab = ref('overview');
       const isIdentityDropdownOpen = ref(false);
-      const isIdentityLocked = ref(false);
+      const isIdentityLocked = ref(initialLock); // Inizializzato con il lucchetto salvato
       const syncStatus = ref('local'); // 'local' | 'live'
       let isUpdatingFromRemote = false;
 
@@ -831,7 +850,6 @@
         try {
           if (!window.FirebaseInit) return;
 
-          // Exact Firebase credentials extracted from your console:
           const firebaseConfig = {
             apiKey: "AIzaSyDywHXjOPKnklecFUK1GtIprQAm8vjs9Cg",
             authDomain: "labhub-portal.firebaseapp.com",
@@ -965,10 +983,19 @@
       });
 
       // --- 5. HELPER FUNCTIONS & PERMISSIONS ---
+      // Salva l'utente attivo e lo stato del lucchetto nel localStorage
+      const saveIdentityState = () => {
+        localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify({
+          userId: currentUser.value.id,
+          isLocked: isIdentityLocked.value
+        }));
+      };
+
       const selectUser = (user) => {
         if (isIdentityLocked.value) return;
         currentUser.value = user;
         isIdentityDropdownOpen.value = false;
+        saveIdentityState(); // <-- Salva la scelta dell'utente
       };
 
       const toggleIdentityLock = () => {
@@ -976,6 +1003,7 @@
         if (isIdentityLocked.value) {
           isIdentityDropdownOpen.value = false;
         }
+        saveIdentityState(); // <-- Salva lo stato del lucchetto
       };
 
       const getUserName = (id) => users.find(u => u.id === id)?.name || 'Sconosciuto';
