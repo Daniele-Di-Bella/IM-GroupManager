@@ -199,7 +199,7 @@
       ]"
     >
       <span>📋</span>
-      <span>Panoramica Capi Lab</span>
+      <span>PANORAMICA</span>
       <span class="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/80 font-mono">
         {{ globalAnalysisProgress.percent }}%
       </span>
@@ -329,7 +329,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#30363d] pb-3">
           <div>
             <h2 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
-              <span>📊</span> Stato Avanzamento Analisi per Sezione
+              <span>📊</span> Avanzamento Delle Analisi
             </h2>
             <p class="text-[11px] text-[#8b949e]">Tracciamento delle analisi di laboratorio condotte in ciascun gruppo</p>
           </div>
@@ -768,19 +768,28 @@
     setup() {
       // --- 1. USERS & ROLES DATA ---
       const users = [
-        { id: 'u1', name: 'Dr. Head', role: 'chief', emoji: '🧑‍🔬' },
-        { id: 'u2', name: 'Dr. Chief 2', role: 'chief', emoji: '👑' },
-        { id: 'u3', name: 'Dr. Chief 3', role: 'chief', emoji: '🧬' },
-        { id: 'u4', name: 'Alice', role: 'ref', emoji: '👩‍🔬' },
-        { id: 'u5', name: 'Bob', role: 'ref', emoji: '👨‍🔬' },
-        { id: 'u6', name: 'Charlie', role: 'ref', emoji: '💻' }
+        { id: 'u1', name: 'Jacopo', role: 'chief', emoji: '🧑‍🔬' },
+        { id: 'u2', name: 'Andrea', role: 'chief', emoji: '👑' },
+        { id: 'u3', name: 'Fabrizio', role: 'chief', emoji: '🧬' },
+        { id: 'u4', name: 'DanieleZ', role: 'ref', emoji: '🧬' },
+        { id: 'u5', name: 'Azzurra', role: 'ref', emoji: '👨‍🔬' },
+        { id: 'u6', name: 'Federico', role: 'ref', emoji: '👨‍🔬' },
+        { id: 'u7', name: 'Agnese', role: 'ref', emoji: '👩‍🔬' },
+        { id: 'u8', name: 'Giulia', role: 'ref', emoji: '👨‍🔬' },
+        { id: 'u9', name: 'Enrico', role: 'ref', emoji: '👨‍🔬' },
+        { id: 'u10', name: 'Cecilia', role: 'ref', emoji: '👨‍🔬' },
+        { id: 'u11', name: 'Daniele', role: 'ref', emoji: '👨‍🔬' },
+        { id: 'u12', name: 'Margherita', role: 'ref', emoji: '👨‍🔬' }
       ];
 
       const topics = [
-        { id: 't1', name: 'Genomica', icon: '🧬', refs: ['u4'] },
-        { id: 't2', name: 'Microscopia', icon: '🔬', refs: ['u5'] },
-        { id: 't3', name: 'Analisi Dati', icon: '📊', refs: ['u6', 'u4'] },
-        { id: 't4', name: 'Wet Lab Generale', icon: '🧪', refs: ['u4', 'u5'] }
+        { id: 't1', name: 'COLLE DEL LYS', icon: '🧊', refs: ['u7', 'u10'] },
+        { id: 't2', name: 'GRAND COMBIN', icon: '🧊', refs: ['u8'] },
+        { id: 't3', name: 'HOLTEDAHLFONNA', icon: '🧊', refs: ['u9', 'u12'] },
+        { id: 't4', name: 'CFA', icon: '📊', refs: ['u5'] },
+        { id: 't6', name: 'MICROBIOLOGIA', icon: '🧪', refs: ['u11', 'u12'] },
+        { id: 't7', name: 'MONITORAGGI', icon: '🧪', refs: ['u6'] },
+        { id: 't8', name: 'CAROTIERE', icon: '🧪', refs: ['u3', 'u4'] }
       ];
 
       // --- PERSISTENZA IDENTITÀ LOCALE (NUOVA SEZIONE) ---
