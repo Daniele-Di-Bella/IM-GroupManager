@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="it" class="dark h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🔬 LabHub // Portal</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#0d1117',
+              card: '#161b22',
+              border: '#30363d',
+              accent: '#10b981',
+              muted: '#8b949e',
+              text: '#c9d1d9'
+            }
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+  <!-- Firebase SDK Modules via CDN -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    window.FirebaseInit = {
+      initializeApp,
+      getAuth,
+      signInAnonymously,
+      getFirestore,
+      doc,
+      setDoc,
+      onSnapshot
+    };
+  </script>
+
+  <style>
+    body {
+      background-color: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    input, select, button {
+      font-size: 14px !important;
+    }
+    .touch-target {
+      min-height: 42px;
+      min-width: 42px;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    select option {
+      background-color: #161b22 !important;
+      color: #ffffff !important;
+      padding: 8px;
+    }
+  </style>
+</head>
+<body class="h-full bg-[#0d1117] text-[#c9d1d9] antialiased selection:bg-emerald-500/30">
+
+<div id="app" class="min-h-screen flex flex-col max-w-5xl mx-auto px-3 sm:px-6 pb-12 font-mono overflow-x-hidden">
+
+  <!-- HEADER -->
+  <header class="py-4 border-b border-[#30363d] flex items-center justify-between gap-2 shrink-0">
+    <div class="flex items-center gap-2 min-w-0 pr-1">
+      <span class="text-xl sm:text-2xl shrink-0">🔬</span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <h1 class="text-base sm:text-lg font-bold text-white tracking-tight truncate">LabHub</h1>
+          <!-- Realtime Sync Badge Indicator -->
+          <span 
+            :class="[
+              'text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 transition-all',
+              syncStatus === 'live' ? 'bg-emerald-950 text-emerald-300 border-emerald-700' : 'bg-amber-950 text-amber-300 border-amber-700'
+            ]"
+            :title="syncStatus === 'live' ? 'Sincronizzazione cloud istantanea attiva per PC e smartphone' : 'Modalità memoria locale'"
+          >
+            <span class="w-1.5 h-1.5 rounded-full" :class="syncStatus === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'"></span>
+            <span>{{ syncStatus === 'live' ? 'LIVE SYNC' : 'LOCAL' }}</span>
+          </span>
+        </div>
+        <p class="text-[10px] sm:text-xs text-[#8b949e] truncate">Gestione Dipartimento & Laboratori</p>
+      </div>
+    </div>
+
+    <!-- Active User Identity Selector & Lock Controls -->
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto justify-end">
+      <div class="relative">
+        <button 
+          @click="isIdentityDropdownOpen = !isIdentityDropdownOpen"
+          :disabled="isIdentityLocked"
+          :class="[
+            'bg-[#161b22] text-white border text-xs rounded-lg px-2 sm:px-3 py-2 outline-none flex items-center gap-1.5 sm:gap-2 transition shadow-sm touch-target',
+            isIdentityLocked ? 'border-emerald-500/80 bg-emerald-950/30 text-emerald-300 font-bold opacity-100 cursor-not-allowed' : 'border-[#30363d] hover:border-emerald-500 cursor-pointer'
+          ]"
+          :title="isIdentityLocked ? 'Identità Bloccata (Sblocca per cambiare utente)' : 'Cambia Utente Attivo'"
+        >
+          <span class="text-base leading-none">{{ currentUser.emoji }}</span>
+          <div class="hidden sm:block text-left">
+            <div class="font-bold leading-tight">{{ currentUser.name }}</div>
+            <div class="text-[9px] text-[#8b949e] uppercase">
+              {{ currentUser.role === 'chief' ? '👑 Capo Lab' : '👤 Referente' }}
+            </div>
+          </div>
+          <span v-if="!isIdentityLocked" class="text-[10px] text-[#8b949e] transition-transform duration-200" :class="{ 'rotate-180': isIdentityDropdownOpen }">▼</span>
+        </button>
+
+        <!-- Custom Dropdown Menu -->
+        <div 
+          v-if="isIdentityDropdownOpen && !isIdentityLocked" 
+          class="absolute right-0 mt-1.5 w-56 sm:w-60 bg-[#161b22] border border-[#30363d] rounded-xl shadow-2xl py-1.5 z-50 text-xs overflow-hidden max-w-[85vw]"
+        >
+          <div class="px-3 py-1.5 text-[10px] font-bold text-[#8b949e] uppercase tracking-wider border-b border-[#30363d]">
+            Seleziona Utente Attivo
+          </div>
+          <button 
+            v-for="u in users" 
+            :key="u.id" 
+            @click="selectUser(u)" 
+            :class="[
+              'w-full px-3 py-2.5 text-left flex items-center justify-between transition hover:bg-[#21262d]',
+              u.id === currentUser.id ? 'bg-[#21262d] text-emerald-400 font-bold' : 'text-white'
+            ]"
+          >
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-sm shrink-0">{{ u.emoji }}</span>
+              <div class="truncate">
+                <div class="text-xs">{{ u.name }}</div>
+                <div class="text-[9px] opacity-70">{{ u.role === 'chief' ? '👑 Capo Lab' : 'Referente' }}</div>
+              </div>
+            </div>
+            <span v-if="u.id === currentUser.id" class="text-xs shrink-0">✓</span>
+          </button>
+        </div>
+        
+        <!-- Backdrop -->
+        <div v-if="isIdentityDropdownOpen" @click="isIdentityDropdownOpen = false" class="fixed inset-0 z-40"></div>
+      </div>
+
+      <!-- Lock Toggle Button -->
+      <button 
+        @click="toggleIdentityLock"
+        :class="[
+          'px-2.5 sm:px-3 py-2 text-xs font-bold rounded-lg transition shrink-0 flex items-center gap-1.5 touch-target shadow-sm',
+          isIdentityLocked 
+            ? 'bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-600' 
+            : 'bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 animate-pulse'
+        ]"
+        :title="isIdentityLocked ? 'Identità Bloccata - Azioni Abilitate' : 'Identità Sbloccata - Azioni Disabilitate'"
+      >
+        <span class="text-sm">{{ isIdentityLocked ? '🔒' : '🔓' }}</span>
+        <span class="hidden xs:inline sm:inline text-[11px]">
+          {{ isIdentityLocked ? 'Bloccato' : 'Sbloccato' }}
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <!-- UNLOCKED IDENTITY WARNING BANNER -->
+  <div v-if="!isIdentityLocked" class="mt-3 bg-amber-950/60 border border-amber-700/80 text-amber-200 px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-between gap-3 shadow-sm">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="text-base shrink-0">⚠️</span>
+      <p class="truncate sm:whitespace-normal">
+        <strong>Identità non bloccata!</strong> Per eseguire o gestire qualsiasi azione (analisi, scadenze, richieste), seleziona l'utente e clicca sul lucchetto 🔓.
+      </p>
+    </div>
+    <button @click="toggleIdentityLock" class="bg-amber-500 hover:bg-amber-400 text-black font-bold px-2.5 py-1 rounded text-[11px] shrink-0 transition">
+      🔒 Blocca Ora
+    </button>
+  </div>
+
+  <!-- NAVIGATION TABS -->
+  <nav class="flex overflow-x-auto no-scrollbar gap-2 py-3 border-b border-[#30363d] shrink-0 text-xs">
+    <button 
+      @click="activeTab = 'overview'"
+      :class="[
+        'px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap shrink-0 flex items-center gap-2 touch-target font-semibold',
+        activeTab === 'overview' 
+          ? 'bg-[#21262d] text-white border-emerald-500 shadow-sm' 
+          : 'bg-[#161b22] text-[#8b949e] border-[#30363d] hover:text-white'
+      ]"
+    >
+      <span>📋</span>
+      <span>Panoramica Capi Lab</span>
+      <span class="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/80 font-mono">
+        {{ globalAnalysisProgress.percent }}%
+      </span>
+    </button>
+
+    <div class="w-px h-6 bg-[#30363d] mx-1 self-center shrink-0"></div>
+
+    <button 
+      v-for="topic in topics" 
+      :key="topic.id"
+      @click="activeTab = topic.id"
+      :class="[
+        'px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap shrink-0 flex items-center gap-2 touch-target font-semibold',
+        activeTab === topic.id 
+          ? 'bg-[#21262d] text-white border-emerald-500 shadow-sm' 
+          : 'bg-[#161b22] text-[#8b949e] border-[#30363d] hover:text-white'
+      ]"
+    >
+      <span>{{ topic.icon }}</span>
+      <span>{{ topic.name }}</span>
+      <span class="ml-0.5 text-[10px] px-1.5 py-0.2 rounded-full bg-[#0d1117] text-[#8b949e] border border-[#30363d] font-mono">
+        {{ getTopicAnalysisProgress(topic.id).percent }}%
+      </span>
+    </button>
+  </nav>
+
+  <!-- MAIN CONTENT CONTAINER -->
+  <main class="flex-1 py-4 space-y-6">
+
+    <!-- OVERVIEW TAB (Lab Chief Dashboard) -->
+    <section v-if="activeTab === 'overview'" class="space-y-5">
+      
+      <!-- Stats Widgets Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="bg-[#161b22] border border-[#30363d] rounded-xl p-4 shadow-sm flex justify-between items-center">
+          <div>
+            <div class="text-[10px] font-bold text-[#8b949e] uppercase tracking-wider mb-1">Acquisti In Attesa</div>
+            <div class="text-2xl font-bold text-white">{{ pendingPurchases.length }}</div>
+          </div>
+          <span class="text-2xl opacity-50">💳</span>
+        </div>
+        <div class="bg-[#161b22] border border-[#30363d] rounded-xl p-4 shadow-sm flex justify-between items-center">
+          <div>
+            <div class="text-[10px] font-bold text-[#8b949e] uppercase tracking-wider mb-1">Burocrazia In Attesa</div>
+            <div class="text-2xl font-bold text-white">{{ pendingBureaucracy.length }}</div>
+          </div>
+          <span class="text-2xl opacity-50">📄</span>
+        </div>
+        <div class="bg-[#161b22] border border-[#30363d] rounded-xl p-4 shadow-sm flex justify-between items-center">
+          <div>
+            <div class="text-[10px] font-bold text-[#8b949e] uppercase tracking-wider mb-1">Scadenze Imminenti (7gg)</div>
+            <div class="text-2xl font-bold text-emerald-400">{{ upcomingDeadlines.length }}</div>
+          </div>
+          <span class="text-2xl opacity-50">📅</span>
+        </div>
+      </div>
+
+      <!-- Chief Role Status Banner -->
+      <div v-if="currentUser.role !== 'chief'" class="bg-amber-950/30 border border-amber-800/50 text-amber-300 p-3.5 rounded-xl text-xs flex items-start gap-2.5">
+        <span class="text-base shrink-0">⚠️</span>
+        <p class="leading-relaxed">
+          Stai visualizzando la panoramica generale. Solamente i <strong>3 Capi Lab</strong> (Dr. Head, Dr. Chief 2, Dr. Chief 3) hanno i permessi necessari per risolvere le richieste.
+        </p>
+      </div>
+
+      <!-- Pending Needs List (Grouped Dashboard) -->
+      <div class="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden shadow-sm">
+        <div class="px-4 py-3 border-b border-[#30363d] flex items-center justify-between bg-[#0d1117]">
+          <h2 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+            <span>📥</span> Richieste in Attesa di Risoluzione
+          </h2>
+          <span class="text-[10px] text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800 font-bold">LIVE STATUS</span>
+        </div>
+
+        <div v-if="pendingNeeds.length === 0" class="p-8 text-center text-[#8b949e] text-xs">
+          <div class="text-3xl mb-2">✅</div>
+          <p>Tutto aggiornato! Nessuna richiesta in attesa nel laboratorio.</p>
+        </div>
+
+        <div v-else class="divide-y divide-[#30363d]">
+          <div v-for="need in pendingNeeds" :key="need.id" class="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#21262d]/50 transition">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <span :class="[
+                  'text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wide border',
+                  need.type === 'purchase' ? 'bg-indigo-950 text-indigo-300 border-indigo-800' : 'bg-amber-950 text-amber-300 border-amber-800'
+                ]">
+                  {{ need.type === 'purchase' ? '💳 Acquisto' : '📄 Burocrazia' }}
+                </span>
+                <span class="text-[10px] text-[#8b949e] bg-[#0d1117] px-2 py-0.5 rounded border border-[#30363d]">
+                  {{ getTopicName(need.topicId) }}
+                </span>
+              </div>
+              <h3 class="text-xs sm:text-sm font-bold text-white mb-0.5">{{ need.title }}</h3>
+              <div class="text-[11px] sm:text-xs text-[#8b949e] flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>Richiesto da: <strong class="text-white">{{ getUserName(need.createdBy) }}</strong></span>
+                <span v-if="need.details" class="truncate max-w-[250px] sm:max-w-md">• {{ need.details }}</span>
+              </div>
+            </div>
+
+            <!-- Action Button for Chiefs Only -->
+            <div class="shrink-0 flex items-center">
+              <button 
+                v-if="currentUser.role === 'chief'"
+                @click="resolveNeed(need.id)"
+                :disabled="!isIdentityLocked"
+                :class="[
+                  'w-full sm:w-auto px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 touch-target border',
+                  isIdentityLocked 
+                    ? 'bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border-emerald-700 cursor-pointer' 
+                    : 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-60'
+                ]"
+              >
+                <span>{{ isIdentityLocked ? '✓' : '🔒' }}</span>
+                <span>Risolvi</span>
+              </button>
+              <div v-else class="text-[11px] text-[#8b949e] italic">
+                Riservato ai Capi Lab
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION ANALYSES PROGRESS TRACKER CARD -->
+      <div class="bg-[#161b22] border border-[#30363d] rounded-xl p-4 sm:p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#30363d] pb-3">
+          <div>
+            <h2 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+              <span>📊</span> Stato Avanzamento Analisi per Sezione
+            </h2>
+            <p class="text-[11px] text-[#8b949e]">Tracciamento delle analisi di laboratorio condotte in ciascun gruppo</p>
+          </div>
+          <div class="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded border border-emerald-800 shrink-0 self-start sm:self-auto">
+            Totale: {{ globalAnalysisProgress.completed }} / {{ globalAnalysisProgress.total }} Completate ({{ globalAnalysisProgress.percent }}%)
+          </div>
+        </div>
+
+        <!-- Grid of Topic Analysis Progresses -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div 
+            v-for="topic in topics" 
+            :key="'ov-prog-'+topic.id" 
+            @click="activeTab = topic.id"
+            class="bg-[#0d1117] border border-[#30363d] hover:border-emerald-500/50 rounded-lg p-3.5 transition cursor-pointer space-y-2.5 group"
+          >
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-white group-hover:text-emerald-400 transition flex items-center gap-1.5">
+                <span>{{ topic.icon }}</span> {{ topic.name }}
+              </span>
+              <span class="font-mono text-emerald-400 font-bold text-[11px]">
+                {{ getTopicAnalysisProgress(topic.id).completed }} / {{ getTopicAnalysisProgress(topic.id).total }} Completate ({{ getTopicAnalysisProgress(topic.id).percent }}%)
+              </span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="w-full bg-[#161b22] rounded-full h-2 overflow-hidden border border-[#30363d] p-0.5">
+              <div 
+                class="bg-gradient-to-r from-emerald-600 to-emerald-400 h-full rounded-full transition-all duration-500" 
+                :style="{ width: getTopicAnalysisProgress(topic.id).percent + '%' }"
+              ></div>
+            </div>
+
+            <div class="flex justify-between items-center text-[10px] text-[#8b949e] pt-0.5">
+              <span>Referenti: {{ topic.refs.map(r => getUserName(r)).join(', ') }}</span>
+              <span class="text-emerald-400 font-semibold group-hover:underline">Vai alla pagina →</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TOPIC TABS -->
+    <section v-for="topic in topics" :key="'sec-'+topic.id" v-show="activeTab === topic.id" class="space-y-4">
+      
+      <!-- Topic Header Banner -->
+      <div class="bg-[#161b22] border border-[#30363d] rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+        <div>
+          <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            <span>{{ topic.icon }}</span> {{ topic.name }}
+          </h2>
+          <p class="text-xs text-[#8b949e] mt-0.5">Sezione Operativa e Attività</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-[#8b949e] shrink-0">Referenti:</span>
+          <div class="flex flex-wrap gap-1">
+             <div v-for="refId in topic.refs" :key="refId" class="flex items-center gap-1 bg-[#0d1117] border border-[#30363d] px-2 py-0.5 rounded text-xs text-white">
+                <span>{{ getUserEmoji(refId) }}</span>
+                <span>{{ getUserName(refId) }}</span>
+             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE PROGRESS TRACKER BAR FOR THIS TOPIC -->
+      <div class="bg-[#161b22] border border-[#30363d] rounded-xl p-3.5 sm:p-4 shadow-sm space-y-2">
+        <div class="flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2 font-bold text-white">
+            <span>🧪</span>
+            <span>Avanzamento Analisi & Esperimenti - {{ topic.name }}</span>
+          </div>
+          <span class="font-bold text-emerald-400 font-mono text-xs sm:text-sm">
+            {{ getTopicAnalysisProgress(topic.id).completed }} / {{ getTopicAnalysisProgress(topic.id).total }} Completate ({{ getTopicAnalysisProgress(topic.id).percent }}%)
+          </span>
+        </div>
+        
+        <!-- Topic Progress Bar -->
+        <div class="w-full bg-[#0d1117] rounded-full h-2.5 overflow-hidden border border-[#30363d] p-0.5">
+          <div 
+            class="bg-gradient-to-r from-emerald-600 to-emerald-400 h-full rounded-full transition-all duration-500" 
+            :style="{ width: getTopicAnalysisProgress(topic.id).percent + '%' }"
+          ></div>
+        </div>
+
+        <div class="flex justify-between items-center text-[10px] text-[#8b949e]">
+          <span>Completamento delle analisi programmate per questo laboratorio</span>
+          <span>Analisi In Corso: {{ getAnalysesByTopic(topic.id).length - getTopicAnalysisProgress(topic.id).completed }}</span>
+        </div>
+      </div>
+
+      <!-- Access Control Alert -->
+      <div v-if="!canManageTopic(topic)" class="bg-[#161b22] border border-[#30363d] text-[#8b949e] p-3 rounded-xl text-xs flex items-center gap-2">
+        <span>🔒</span>
+        <span>Modalità Sola Lettura: Puoi aggiungere o modificare le attività di questa sezione solo se sei assegnato come <strong>Referente</strong> di questa materia o come <strong>Capo Lab</strong>.</span>
+      </div>
+
+      <!-- ANALYSES TO CONDUCT -->
+      <div class="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden shadow-sm flex flex-col">
+        <div class="px-4 py-3 border-b border-[#30363d] bg-[#0d1117] flex items-center justify-between">
+          <h3 class="text-xs font-bold text-white flex items-center gap-2">
+            <span>🧬</span> ANALISI & ESPERIMENTI IN CORSO
+          </h3>
+          <span class="text-[10px] text-[#8b949e] font-mono">
+            {{ getTopicAnalysisProgress(topic.id).completed }} di {{ getAnalysesByTopic(topic.id).length }} Completate
+          </span>
+        </div>
+
+        <!-- Add Analysis Form -->
+        <div v-if="canManageTopic(topic)" class="p-3 border-b border-[#30363d] bg-[#0d1117]/50 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">REGISTRA NUOVA ANALISI DA CONDURRE</span>
+            <span v-if="!isIdentityLocked" class="text-[10px] text-amber-400 font-bold">🔒 Blocco identità richiesto</span>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input 
+              v-model="newAnalysis.title" 
+              type="text" 
+              :disabled="!isIdentityLocked"
+              placeholder="Titolo dell'analisi (Es. Sequenziamento RNA-seq, Taratura laser)..." 
+              class="flex-1 bg-[#0d1117] border border-[#30363d] rounded-lg px-2.5 py-2 text-xs text-white focus:border-emerald-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+            <input 
+              v-model="newAnalysis.details" 
+              type="text" 
+              :disabled="!isIdentityLocked"
+              placeholder="Dettagli / Protocollo / Campioni..." 
+              class="flex-1 bg-[#0d1117] border border-[#30363d] rounded-lg px-2.5 py-2 text-xs text-white focus:border-emerald-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+            <button 
+              @click="addAnalysis(topic.id)" 
+              :disabled="!isIdentityLocked"
+              :class="[
+                'px-3.5 py-2 rounded-lg text-xs font-bold transition shrink-0 touch-target flex items-center justify-center gap-1 border',
+                isIdentityLocked 
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 cursor-pointer' 
+                  : 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-60'
+              ]"
+            >
+              <span>{{ isIdentityLocked ? '+' : '🔒' }}</span>
+              <span>Aggiungi</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- List of Analyses -->
+        <div class="p-3 divide-y divide-[#30363d]/50 space-y-2">
+          <div v-if="getAnalysesByTopic(topic.id).length === 0" class="text-center text-[#8b949e] py-6 text-xs">
+            Nessuna analisi registrata per questa sezione. Aggiungi le analisi da condurre per aggiornare la barra di progresso!
+          </div>
+
+          <div 
+            v-for="item in getAnalysesByTopic(topic.id)" 
+            :key="item.id"
+            :class="[
+              'pt-2 pb-1 flex items-start justify-between gap-3 transition rounded-lg p-2.5',
+              item.completed ? 'bg-emerald-950/20 border border-emerald-900/30' : 'bg-[#0d1117] border border-[#30363d]'
+            ]"
+          >
+            <div class="flex items-start gap-2.5 min-w-0 flex-1">
+              <!-- Toggle Checkbox Button -->
+              <button 
+                @click="toggleAnalysis(item.id)"
+                :disabled="!isIdentityLocked || !canManageTopic(topic)"
+                :class="[
+                  'mt-0.5 w-5 h-5 rounded flex items-center justify-center shrink-0 border transition',
+                  item.completed 
+                    ? 'bg-emerald-500 border-emerald-400 text-black font-bold' 
+                    : 'border-[#30363d] bg-[#161b22] hover:border-emerald-500',
+                  (!isIdentityLocked || !canManageTopic(topic)) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                ]"
+                :title="!isIdentityLocked ? 'Blocca identità per modificare lo stato' : 'Segna come completata'"
+              >
+                <span v-if="item.completed" class="text-xs">✓</span>
+              </button>
+
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <h4 :class="['text-xs font-bold', item.completed ? 'text-[#8b949e] line-through' : 'text-white']">
+                    {{ item.title }}
+                  </h4>
+                  <span :class="[
+                    'text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase',
+                    item.completed ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-amber-950 text-amber-300 border-amber-800'
+                  ]">
+                    {{ item.completed ? 'Completata' : 'In Corso' }}
+                  </span>
+                </div>
+                <p v-if="item.details" class="text-[11px] text-[#8b949e] mt-0.5">{{ item.details }}</p>
+                <div class="text-[9px] text-[#8b949e] mt-1">Registrato da {{ getUserName(item.createdBy) }}</div>
+              </div>
+            </div>
+
+            <button 
+              v-if="canManageTopic(topic)" 
+              @click="deleteAnalysis(item.id)" 
+              :disabled="!isIdentityLocked"
+              :class="[
+                'text-[10px] px-1.5 py-0.5 transition shrink-0',
+                isIdentityLocked ? 'text-[#8b949e] hover:text-red-400 cursor-pointer' : 'text-gray-600 cursor-not-allowed opacity-40'
+              ]"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two Column Layout for Activities & Requests -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        
+        <!-- LEFT COLUMN: Deadlines -->
+        <div class="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden shadow-sm flex flex-col">
+          <div class="px-4 py-3 border-b border-[#30363d] bg-[#0d1117] flex items-center justify-between">
+            <h3 class="text-xs font-bold text-white flex items-center gap-2">
+              <span>📅</span> ATTIVITÀ & SCADENZE
+            </h3>
+            <span class="text-[10px] text-[#8b949e] font-mono">{{ getDeadlinesByTopic(topic.id).length }} elementi</span>
+          </div>
+
+          <!-- Add Deadline Form -->
+          <div v-if="canManageTopic(topic)" class="p-3 border-b border-[#30363d] bg-[#0d1117]/50 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">NUOVA SCADENZA</span>
+              <span v-if="!isIdentityLocked" class="text-[10px] text-amber-400 font-bold">🔒 Blocco identità richiesto</span>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input 
+                v-model="newDeadline.title" 
+                type="text" 
+                :disabled="!isIdentityLocked"
+                placeholder="Es. Preparazione campioni..." 
+                class="flex-1 bg-[#0d1117] border border-[#30363d] rounded-lg px-2.5 py-2 text-xs text-white focus:border-emerald-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+              <input 
+                v-model="newDeadline.date" 
+                type="date" 
+                :disabled="!isIdentityLocked"
+                class="w-full sm:w-36 bg-[#0d1117] border border-[#30363d] rounded-lg px-2.5 py-2 text-xs text-white focus:border-emerald-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+              <button 
+                @click="addDeadline(topic.id)" 
+                :disabled="!isIdentityLocked"
+                :class="[
+                  'px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 touch-target flex items-center justify-center gap-1 border',
+                  isIdentityLocked 
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 cursor-pointer' 
+                    : 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-60'
+                ]"
+              >
+                <span>{{ isIdentityLocked ? '+' : '🔒' }}</span>
+                <span>Aggiungi</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- List of Deadlines -->
+          <div class="p-2 flex-1 overflow-y-auto min-h-[180px]">
+            <div v-if="getDeadlinesByTopic(topic.id).length === 0" class="text-center text-[#8b949e] py-6 text-xs">
+              Nessuna scadenza in programma.
+            </div>
+            <div class="space-y-1.5">
+              <div v-for="dl in getDeadlinesByTopic(topic.id)" :key="dl.id" class="p-2.5 bg-[#0d1117] border border-[#30363d] rounded-lg flex items-center justify-between">
+                <div class="min-w-0 pr-2">
+                  <div class="text-xs font-bold text-white mb-0.5 truncate">{{ dl.title }}</div>
+                  <div class="text-[10px] text-[#8b949e] flex flex-wrap items-center gap-1.5">
+                    <span class="text-emerald-400">📅 {{ formatDate(dl.date) }}</span>
+                    <span>•</span>
+                    <span>da {{ getUserName(dl.createdBy) }}</span>
+                  </div>
+                </div>
+                
+                <button 
+                  v-if="canManageTopic(topic)" 
+                  @click="deleteDeadline(dl.id)" 
+                  :disabled="!isIdentityLocked"
+                  :class="[
+                    'transition px-2 text-xs touch-target flex items-center justify-center',
+                    isIdentityLocked ? 'text-[#8b949e] hover:text-red-400 cursor-pointer' : 'text-gray-600 cursor-not-allowed opacity-40'
+                  ]"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Purchase Requests & Bureaucracy -->
+        <div class="bg-[#161b22] border border-[#30363d] rounded-xl overflow-hidden shadow-sm flex flex-col">
+          <div class="px-4 py-3 border-b border-[#30363d] bg-[#0d1117] flex items-center justify-between">
+            <h3 class="text-xs font-bold text-white flex items-center gap-2">
+              <span>🛒</span> RICHIESTE ACQUISTI & BUROCRAZIA
+            </h3>
+            <span class="text-[10px] text-[#8b949e] font-mono">{{ getNeedsByTopic(topic.id).length }} elementi</span>
+          </div>
+
+          <!-- Add Request Form -->
+          <div v-if="canManageTopic(topic)" class="p-3 border-b border-[#30363d] bg-[#0d1117]/50 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wide">INVIA RICHIESTA AL CAPO LAB</span>
+              <span v-if="!isIdentityLocked" class="text-[10px] text-amber-400 font-bold">🔒 Blocco identità richiesto</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2">
+              <select 
+                v-model="newNeed.type" 
+                :disabled="!isIdentityLocked"
+                class="w-full sm:w-32 bg-[#0d1117] border border-[#30363d] rounded-lg px-2 py-2 text-xs text-white focus:border-emerald-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                <option value="purchase">Acquisto</option>
+                <option value="admin">Burocrazia</option>
+              </select>
+              <input 
+                v-model="newNeed.title" 
+                type="text" 
+                :disabled="!isIdentityLocked"
+                placeholder="Titolo della richiesta..." 
+                class="flex-1 bg-[#0d1117] border border-[#30363d] rounded-lg px-2.5 py-2 text-xs text-white focus:border-emerald-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input 
+                v-model="newNeed.details" 
+                type="text" 
+                :disabled="!isIdentityLocked"
+                placeholder="Dettagli (Fornitore, Link, Urgenza)..." 
+                class="flex-1 bg-[#0d1117] border border-[#30363d] rounded-lg px-2.5 py-2 text-xs text-white focus:border-emerald-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+              <button 
+                @click="addNeed(topic.id)" 
+                :disabled="!isIdentityLocked"
+                :class="[
+                  'px-3 py-2 rounded-lg text-xs font-bold transition shrink-0 touch-target flex items-center justify-center gap-1 border',
+                  isIdentityLocked 
+                    ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500 cursor-pointer' 
+                    : 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-60'
+                ]"
+              >
+                <span>{{ isIdentityLocked ? '🚀' : '🔒' }}</span>
+                <span>Invia</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- List of Needs -->
+          <div class="p-2 flex-1 overflow-y-auto min-h-[180px]">
+            <div v-if="getNeedsByTopic(topic.id).length === 0" class="text-center text-[#8b949e] py-6 text-xs">
+              Nessuna richiesta attiva per questa sezione.
+            </div>
+            <div class="space-y-1.5">
+              <div 
+                v-for="need in getNeedsByTopic(topic.id)" 
+                :key="need.id" 
+                :class="[
+                  'p-2.5 border rounded-lg transition', 
+                  need.status === 'resolved' ? 'bg-emerald-950/20 border-emerald-900/40 opacity-70' : 'bg-[#0d1117] border-[#30363d]'
+                ]"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5 mb-1">
+                      <span v-if="need.status === 'resolved'" class="text-[9px] bg-emerald-950 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-800 uppercase font-bold">✓ Risolto</span>
+                      <span v-else :class="['text-[9px] font-bold px-1.5 py-0.2 rounded uppercase border', need.type === 'purchase' ? 'bg-indigo-950 text-indigo-300 border-indigo-800' : 'bg-amber-950 text-amber-300 border-amber-800']">
+                        {{ need.type === 'purchase' ? 'Acquisto' : 'Burocrazia' }}
+                      </span>
+                      <span class="text-[9px] text-[#8b949e]">da {{ getUserName(need.createdBy) }}</span>
+                    </div>
+                    <div :class="['text-xs font-bold mb-0.5', need.status === 'resolved' ? 'text-[#8b949e] line-through' : 'text-white']">{{ need.title }}</div>
+                    <div v-if="need.details" class="text-[11px] text-[#8b949e] truncate">{{ need.details }}</div>
+                  </div>
+                  
+                  <div v-if="canManageTopic(topic)" class="flex flex-col items-end gap-1 shrink-0">
+                    <button 
+                      v-if="currentUser.role === 'chief' && need.status === 'pending'" 
+                      @click="resolveNeed(need.id)" 
+                      :disabled="!isIdentityLocked"
+                      :class="[
+                        'text-[9px] px-2 py-1 rounded border font-bold transition flex items-center gap-1',
+                        isIdentityLocked 
+                          ? 'bg-emerald-950 text-emerald-300 border-emerald-700 hover:bg-emerald-900 cursor-pointer' 
+                          : 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-50'
+                      ]"
+                    >
+                      <span>{{ isIdentityLocked ? '✓' : '🔒' }}</span>
+                      <span>Risolvi</span>
+                    </button>
+                    
+                    <button 
+                      @click="deleteNeed(need.id)" 
+                      :disabled="!isIdentityLocked"
+                      :class="[
+                        'text-[9px] px-1 py-0.5 transition',
+                        isIdentityLocked ? 'text-red-400 hover:underline cursor-pointer' : 'text-gray-600 cursor-not-allowed opacity-40'
+                      ]"
+                    >
+                      Elimina
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="mt-8 mb-4 pt-4 border-t border-[#30363d] text-xs text-[#8b949e]">
+    <div class="bg-[#161b22] border border-[#30363d] rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+      <div class="flex items-center gap-2">
+        <span class="text-emerald-400">🔬</span>
+        <span>LabHub Portal // Dipartimento 2026</span>
+      </div>
+      <div>
+        Stato Identità: 
+        <strong :class="isIdentityLocked ? 'text-emerald-400' : 'text-amber-400'">
+          {{ isIdentityLocked ? '🔒 Bloccata' : '🔓 Sbloccata (Azioni Disabilitate)' }}
+        </strong>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  const { createApp, ref, computed, onMounted, watch } = Vue;
+
+  createApp({
+    setup() {
+      // --- 1. USERS & ROLES DATA ---
+      const users = [
+        { id: 'u1', name: 'Dr. Head', role: 'chief', emoji: '🧑‍🔬' },
+        { id: 'u2', name: 'Dr. Chief 2', role: 'chief', emoji: '👑' },
+        { id: 'u3', name: 'Dr. Chief 3', role: 'chief', emoji: '🧬' },
+        { id: 'u4', name: 'Alice', role: 'ref', emoji: '👩‍🔬' },
+        { id: 'u5', name: 'Bob', role: 'ref', emoji: '👨‍🔬' },
+        { id: 'u6', name: 'Charlie', role: 'ref', emoji: '💻' }
+      ];
+
+      const topics = [
+        { id: 't1', name: 'Genomica', icon: '🧬', refs: ['u4'] },
+        { id: 't2', name: 'Microscopia', icon: '🔬', refs: ['u5'] },
+        { id: 't3', name: 'Analisi Dati', icon: '📊', refs: ['u6', 'u4'] },
+        { id: 't4', name: 'Wet Lab Generale', icon: '🧪', refs: ['u4', 'u5'] }
+      ];
+
+      // --- 2. REACTIVE STATE ---
+      const currentUser = ref(users[0]);
+      const activeTab = ref('overview');
+      const isIdentityDropdownOpen = ref(false);
+      const isIdentityLocked = ref(false);
+      const syncStatus = ref('local'); // 'local' | 'live'
+      let isUpdatingFromRemote = false;
+
+      // Data Collections
+      const needs = ref([]);
+      const deadlines = ref([]);
+      const analyses = ref([]);
+
+      // Form Models
+      const newDeadline = ref({ title: '', date: '' });
+      const newNeed = ref({ type: 'purchase', title: '', details: '' });
+      const newAnalysis = ref({ title: '', details: '' });
+
+      // --- 3. STORAGE & REALTIME CLOUD SYNC ---
+      const LOCAL_STORAGE_KEY = 'labhub_portal_v3_analyses';
+
+      // Push state changes to Firebase Cloud & LocalStorage
+      const pushStateToCloud = async () => {
+        const payload = {
+          needs: needs.value,
+          deadlines: deadlines.value,
+          analyses: analyses.value,
+          updatedAt: Date.now()
+        };
+
+        // Local Storage backup
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(payload));
+
+        // Firebase Cloud Sync
+        if (window.dbInstance && window.syncDocRef && !isUpdatingFromRemote) {
+          try {
+            await window.FirebaseInit.setDoc(window.syncDocRef, payload);
+          } catch (err) {
+            console.error("Errore sincro cloud Firebase:", err);
+          }
+        }
+      };
+
+      // Setup Realtime Sync Listener
+      const setupRealtimeSync = async () => {
+        try {
+          if (!window.FirebaseInit) return;
+
+          // Exact Firebase credentials extracted from your console:
+          const firebaseConfig = {
+            apiKey: "AIzaSyDywHXjOPKnklecFUK1GtIprQAm8vjs9Cg",
+            authDomain: "labhub-portal.firebaseapp.com",
+            projectId: "labhub-portal",
+            storageBucket: "labhub-portal.firebasestorage.app",
+            messagingSenderId: "764223595413",
+            appId: "1:764223595413:web:52ce77d768ba553a58cc9c"
+          };
+
+          const { initializeApp, getAuth, signInAnonymously, getFirestore, doc, setDoc, onSnapshot } = window.FirebaseInit;
+
+          const app = initializeApp(firebaseConfig);
+          const auth = getAuth(app);
+          const db = getFirestore(app);
+
+          await signInAnonymously(auth);
+
+          // Shared database document reference
+          const docRef = doc(db, 'labhub', 'portal_state');
+          window.dbInstance = db;
+          window.syncDocRef = docRef;
+
+          // Realtime Snapshot Listener
+          onSnapshot(docRef, (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.data();
+              isUpdatingFromRemote = true;
+              needs.value = data.needs || [];
+              deadlines.value = data.deadlines || [];
+              analyses.value = data.analyses || [];
+              syncStatus.value = 'live';
+              
+              setTimeout(() => { isUpdatingFromRemote = false; }, 100);
+            } else {
+              pushStateToCloud();
+              syncStatus.value = 'live';
+            }
+          }, (error) => {
+            console.warn("Errore listener Firestore (passaggio a locale):", error);
+            syncStatus.value = 'local';
+          });
+
+        } catch (error) {
+          console.warn("Impossibile avviare la sincronizzazione Firebase:", error);
+          syncStatus.value = 'local';
+        }
+      };
+
+      onMounted(() => {
+        // Load local backup state
+        const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            needs.value = parsed.needs || [];
+            deadlines.value = parsed.deadlines || [];
+            analyses.value = parsed.analyses || [];
+          } catch (e) {
+            console.error("Errore nel caricamento dati locali", e);
+          }
+        } else {
+          // Initial Seed Data
+          analyses.value = [
+            { id: 'a1', topicId: 't1', title: 'Sequenziamento RNA-seq (NextSeq)', details: 'Run su 24 campioni vegetali', completed: true, createdBy: 'u4' },
+            { id: 'a2', topicId: 't1', title: 'Controllo Qualità RIN (Bioanalyzer)', details: 'Soglia accettazione RIN >= 8.0', completed: false, createdBy: 'u4' },
+            { id: 'a3', topicId: 't2', title: 'Acquisizione 3D Confocale Zeiss', details: 'Scansione Z-stack su GFP', completed: true, createdBy: 'u5' },
+            { id: 'a4', topicId: 't2', title: 'Calibrazione Deconvolution Huygens', details: 'Olio ad immersione e laser 488nm', completed: false, createdBy: 'u5' },
+            { id: 'a5', topicId: 't3', title: 'Assembly De Novo Genoma', details: 'Pipeline Flye/Medaka Nanopore', completed: true, createdBy: 'u6' },
+            { id: 'a6', topicId: 't3', title: 'Annotazione Funzionale BLAST', details: 'Mappatura famiglie geniche', completed: false, createdBy: 'u6' },
+            { id: 'a7', topicId: 't4', title: 'Estrazione Proteica Buffer RIPA', details: 'Dosaggio BCA per 12 lotti', completed: false, createdBy: 'u4' }
+          ];
+
+          deadlines.value = [
+            { id: 'd1', topicId: 't1', title: 'Invio campioni RNA-seq', date: '2026-10-20', createdBy: 'u4' },
+            { id: 'd2', topicId: 't3', title: 'Aggiornamento pipeline bioinformatica', date: '2026-10-25', createdBy: 'u6' },
+            { id: 'd3', topicId: 't2', title: 'Taratura laser confocale', date: '2026-10-28', createdBy: 'u5' }
+          ];
+
+          needs.value = [
+            { id: 'n1', topicId: 't2', type: 'purchase', title: 'Set di pulizia lenti Zeiss', details: 'Fornitore Zeiss, urgente', status: 'pending', createdBy: 'u5' },
+            { id: 'n2', topicId: 't1', type: 'admin', title: 'Modulo approvazione comitato etico', details: 'Richiede firma pagina 4', status: 'pending', createdBy: 'u4' },
+            { id: 'n3', topicId: 't4', type: 'purchase', title: 'Pipette e puntali stabili', details: 'Scorta trimestrale', status: 'resolved', createdBy: 'u4' }
+          ];
+        }
+
+        // Initialize cloud sync
+        setTimeout(setupRealtimeSync, 300);
+      });
+
+      // Watcher to sync changes across all clients when local mutations happen
+      watch([needs, deadlines, analyses], () => {
+        if (!isUpdatingFromRemote) {
+          pushStateToCloud();
+        }
+      }, { deep: true });
+
+      // --- 4. COMPUTED PROGRESS TRACKERS & DASHBOARD PROPERTIES ---
+      const globalAnalysisProgress = computed(() => {
+        if (analyses.value.length === 0) return { percent: 100, completed: 0, total: 0 };
+        const completed = analyses.value.filter(a => a.completed).length;
+        const percent = Math.round((completed / analyses.value.length) * 100);
+        return { percent, completed, total: analyses.value.length };
+      });
+
+      const getTopicAnalysisProgress = (topicId) => {
+        const topicAnalyses = analyses.value.filter(a => a.topicId === topicId);
+        if (topicAnalyses.length === 0) return { percent: 100, completed: 0, total: 0 };
+        const completed = topicAnalyses.filter(a => a.completed).length;
+        const percent = Math.round((completed / topicAnalyses.length) * 100);
+        return { percent, completed, total: topicAnalyses.length };
+      };
+
+      const getAnalysesByTopic = (topicId) => {
+        return analyses.value.filter(a => a.topicId === topicId);
+      };
+
+      const pendingNeeds = computed(() => {
+        return needs.value.filter(n => n.status === 'pending').reverse();
+      });
+
+      const pendingPurchases = computed(() => pendingNeeds.value.filter(n => n.type === 'purchase'));
+      const pendingBureaucracy = computed(() => pendingNeeds.value.filter(n => n.type === 'admin'));
+      
+      const upcomingDeadlines = computed(() => {
+        const now = new Date();
+        const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        return deadlines.value.filter(d => {
+          const dlDate = new Date(d.date);
+          return dlDate >= now && dlDate <= nextWeek;
+        });
+      });
+
+      // --- 5. HELPER FUNCTIONS & PERMISSIONS ---
+      const selectUser = (user) => {
+        if (isIdentityLocked.value) return;
+        currentUser.value = user;
+        isIdentityDropdownOpen.value = false;
+      };
+
+      const toggleIdentityLock = () => {
+        isIdentityLocked.value = !isIdentityLocked.value;
+        if (isIdentityLocked.value) {
+          isIdentityDropdownOpen.value = false;
+        }
+      };
+
+      const getUserName = (id) => users.find(u => u.id === id)?.name || 'Sconosciuto';
+      const getUserEmoji = (id) => users.find(u => u.id === id)?.emoji || '👤';
+      const getTopicName = (id) => topics.find(t => t.id === id)?.name || 'Sconosciuto';
+      
+      const formatDate = (dateStr) => {
+        if (!dateStr) return '';
+        const options = { day: '2-digit', month: 'short', year: 'numeric' };
+        return new Date(dateStr).toLocaleDateString('it-IT', options);
+      };
+
+      const canManageTopic = (topic) => {
+        return currentUser.value.role === 'chief' || topic.refs.includes(currentUser.value.id);
+      };
+
+      const getDeadlinesByTopic = (topicId) => {
+        return deadlines.value.filter(d => d.topicId === topicId).sort((a, b) => new Date(a.date) - new Date(b.date));
+      };
+
+      const getNeedsByTopic = (topicId) => {
+        return [...needs.value]
+          .filter(n => n.topicId === topicId)
+          .sort((a, b) => (a.status === b.status ? 0 : a.status === 'pending' ? -1 : 1));
+      };
+
+      // --- 6. USER ACTIONS ---
+      const addAnalysis = (topicId) => {
+        if (!isIdentityLocked.value) return;
+        if (!newAnalysis.value.title) return;
+
+        analyses.value.push({
+          id: 'an_' + Date.now(),
+          topicId: topicId,
+          title: newAnalysis.value.title,
+          details: newAnalysis.value.details,
+          completed: false,
+          createdBy: currentUser.value.id
+        });
+
+        newAnalysis.value.title = '';
+        newAnalysis.value.details = '';
+      };
+
+      const toggleAnalysis = (id) => {
+        if (!isIdentityLocked.value) return;
+        const item = analyses.value.find(a => a.id === id);
+        if (item) {
+          item.completed = !item.completed;
+        }
+      };
+
+      const deleteAnalysis = (id) => {
+        if (!isIdentityLocked.value) return;
+        analyses.value = analyses.value.filter(a => a.id !== id);
+      };
+
+      const addDeadline = (topicId) => {
+        if (!isIdentityLocked.value) return;
+        if (!newDeadline.value.title || !newDeadline.value.date) return;
+        
+        deadlines.value.push({
+          id: 'dl_' + Date.now(),
+          topicId: topicId,
+          title: newDeadline.value.title,
+          date: newDeadline.value.date,
+          createdBy: currentUser.value.id
+        });
+        
+        newDeadline.value.title = '';
+        newDeadline.value.date = '';
+      };
+
+      const deleteDeadline = (id) => {
+        if (!isIdentityLocked.value) return;
+        deadlines.value = deadlines.value.filter(d => d.id !== id);
+      };
+
+      const addNeed = (topicId) => {
+        if (!isIdentityLocked.value) return;
+        if (!newNeed.value.title) return;
+
+        needs.value.push({
+          id: 'nd_' + Date.now(),
+          topicId: topicId,
+          type: newNeed.value.type,
+          title: newNeed.value.title,
+          details: newNeed.value.details,
+          status: 'pending',
+          createdBy: currentUser.value.id
+        });
+
+        newNeed.value.title = '';
+        newNeed.value.details = '';
+      };
+
+      const resolveNeed = (id) => {
+        if (!isIdentityLocked.value) return;
+        if (currentUser.value.role !== 'chief') return;
+
+        const need = needs.value.find(n => n.id === id);
+        if (need) {
+          need.status = 'resolved';
+        }
+      };
+
+      const deleteNeed = (id) => {
+        if (!isIdentityLocked.value) return;
+        needs.value = needs.value.filter(n => n.id !== id);
+      };
+
+      return {
+        users, topics, currentUser, activeTab, isIdentityDropdownOpen, isIdentityLocked, syncStatus,
+        selectUser, toggleIdentityLock, canManageTopic, getUserName, getUserEmoji, getTopicName, formatDate,
+        needs, deadlines, analyses, newDeadline, newNeed, newAnalysis,
+        globalAnalysisProgress, getTopicAnalysisProgress, getAnalysesByTopic,
+        pendingNeeds, pendingPurchases, pendingBureaucracy, upcomingDeadlines,
+        getDeadlinesByTopic, getNeedsByTopic,
+        addAnalysis, toggleAnalysis, deleteAnalysis,
+        addDeadline, deleteDeadline, addNeed, resolveNeed, deleteNeed
+      };
+    }
+  }).mount('#app');
+</script>
+
+</body>
+</html>
